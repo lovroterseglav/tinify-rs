@@ -1,4 +1,4 @@
-use crate::TinifyException;
+use crate::{ResizeMethod, TinifyException};
 use crate::source::Source;
 use std::path::Path;
 
