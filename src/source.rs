@@ -243,8 +243,8 @@ impl Source {
     self.buffer.as_ref().unwrap().to_vec()
   }
 
-  pub fn to_url(&self) -> Option<&String> {
-    self.url.as_ref()
+  pub fn to_url(&self) -> Option<String> {
+    Some(self.url.as_ref().unwrap().to_string())
   }
 
 }
