@@ -1,4 +1,4 @@
-use crate::TinifyException;
+use crate::{ResizeMethod, TinifyException};
 use crate::source::Source;
 use std::path::Path;
 
@@ -105,6 +105,19 @@ impl Client {
     let source = Source::new(None, Some(self.key.clone()))
       .from_url(url);
   
+    source
+  }
+
+  pub fn resize(
+    &self,
+    path: &str,
+    width: u32,
+    height: u32,
+    method: ResizeMethod
+  ) -> Result<Source, TinifyException> {
+    let source = Source::new(None, Some(self.key.clone()))
+        .resize(path, width, height, method);
+
     source
   }
 }

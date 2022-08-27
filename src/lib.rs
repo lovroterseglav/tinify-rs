@@ -19,6 +19,13 @@ pub struct Tinify {
   pub key: String,
 }
 
+pub enum ResizeMethod {
+  Scale,
+  Fit,
+  Cover,
+  Thumb,
+}
+
 impl Tinify {
   /// Create a new Tinify Object.
   ///

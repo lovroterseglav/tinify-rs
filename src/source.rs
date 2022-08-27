@@ -1,3 +1,4 @@
+use crate::ResizeMethod;
 use crate::error::{self, TinifyException};
 use reqwest::blocking::Client as BlockingClient;
 use reqwest::blocking::Response as ReqwestResponse;
@@ -9,6 +10,7 @@ use std::path::Path;
 use std::fs::File;
 use std::process;
 use std::str;
+use reqwest::header::CONTENT_TYPE;
 
 type TinifyError = ReqwestError;
 type TinifyResponse = ReqwestResponse;
@@ -18,6 +20,31 @@ const API_ENDPOINT: &str = "https://api.tinify.com";
 pub enum Method {
   Post,
   Get,
+  Resize,
+}
+
+pub struct ResizeData {
+  method: String,
+  width: u32,
+  height: u32,
+}
+
+impl ResizeData {
+  fn new(method: String, width: u32, height: u32) -> ResizeData {
+    ResizeData {
+      method,
+      width,
+      height,
+    }
+  }
+
+  fn to_json_text(self) -> String {
+    format!("{{ \"resize\": {{ \"method\": \"{}\", \"width\": {}, \"height\": {} }} }}",
+            self.method,
+            self.width,
+            self.height
+    )
+  }
 }
 
 #[derive(Debug, PartialEq)]
@@ -44,6 +71,7 @@ impl Source {
     method: Method,
     url: &str,
     buffer: Option<&[u8]>,
+    resize_data: Option<ResizeData>,
   ) -> Result<TinifyResponse, TinifyError> {
     let parse = format!("{}{}", API_ENDPOINT, url);
     let reqwest_client = BlockingClient::new();
@@ -67,6 +95,16 @@ impl Source {
 
         resp
       },
+      Method::Resize => {
+        reqwest_client
+            .post(parse)
+            .header(CONTENT_TYPE, "application/json")
+            .body(resize_data.unwrap().to_json_text())
+            .basic_auth("api", self.key.as_ref())
+            .timeout(timeout)
+            .send()
+
+      }
     };
     if let Err(error) = resp.as_ref() {
       if error.is_connect() {
@@ -119,7 +157,7 @@ impl Source {
 
   pub fn from_buffer(self, buffer: &[u8]) -> Self {
     let resp = self
-      .request(Method::Post, "/shrink", Some(buffer));
+      .request(Method::Post, "/shrink", Some(buffer), None);
 
     self.get_source_from_response(resp.unwrap())
   }
@@ -129,13 +167,43 @@ impl Source {
     url: &str,
   ) -> Result<Self, TinifyException> {
     let get_resp =
-      self.request(Method::Get, url, None);
+      self.request(Method::Get, url, None, None);
     let bytes =
       get_resp.unwrap().bytes().unwrap().to_vec();
     let post_resp = self
-      .request(Method::Post, "/shrink", Some(&bytes));
+      .request(Method::Post, "/shrink", Some(&bytes), None);
 
     Ok(self.get_source_from_response(post_resp.unwrap()))
+  }
+
+  pub fn resize(
+    self,
+    path: &str,
+    width: u32,
+    height: u32,
+    method: ResizeMethod
+  ) -> Result<Self, TinifyException> {
+    let method = match method {
+      ResizeMethod::Scale => String::from("scale"),
+      ResizeMethod::Fit => String::from("fit"),
+      ResizeMethod::Cover => String::from("cover"),
+      ResizeMethod::Thumb => String::from("thumb"),
+    };
+    let resize = ResizeData::new(method,width, height);
+    let resize_resp = self
+      .request(Method::Resize, path, None, Some(resize));
+
+    Ok(self.resize_image_to_buffer(resize_resp.unwrap()))
+  }
+
+  fn resize_image_to_buffer(
+    mut self,
+    response: TinifyResponse,
+  ) -> Self {
+    let url = response.url().to_string();
+    self.buffer = Some(response.bytes().unwrap().to_vec());
+    self.url = Some(url);
+    self
   }
 
   pub fn get_source_from_response(
@@ -153,7 +221,7 @@ impl Source {
         str::from_utf8(optimized_location.as_bytes()).unwrap();
       url.push_str(slice);
     }
-    let bytes = self.request(Method::Get, &url, None);
+    let bytes = self.request(Method::Get, &url, None, None);
     let compressed =
       bytes.unwrap().bytes().unwrap().to_vec();
     self.buffer = Some(compressed);
@@ -174,6 +242,11 @@ impl Source {
   pub fn to_buffer(&self) -> Vec<u8> {
     self.buffer.as_ref().unwrap().to_vec()
   }
+
+  pub fn to_url(&self) -> Option<String> {
+    Some(self.url.as_ref().unwrap().to_string())
+  }
+
 }
 
 #[cfg(test)]
@@ -196,7 +269,7 @@ mod tests {
   fn test_get_request() -> Result<(), TinifyError> {
     let source = Source::new(None, None);
     let url = "https://tinypng.com/images/panda-happy.png";
-    let _ = source.request(Method::Get, url, None)?;
+    let _ = source.request(Method::Get, url, None, None)?;
 
     Ok(())
   }
@@ -209,7 +282,7 @@ mod tests {
     let path = Path::new("./tmp_image.jpg");
     let bytes = fs::read(path).unwrap();
     let _ = source
-      .request(Method::Post, "/shrink", Some(&bytes))?;
+      .request(Method::Post, "/shrink", Some(&bytes), None)?;
 
     Ok(())
   }
@@ -241,7 +314,7 @@ mod tests {
     let path = Path::new("./tmp_image.jpg");
     let source = Source::new(None, Some(key.clone()));
     let bytes = fs::read(path).unwrap();
-    let get_resp = source.request(Method::Post, "/shrink", Some(&bytes)).unwrap();
+    let get_resp = source.request(Method::Post, "/shrink", Some(&bytes), None).unwrap();
     let actual = source.get_source_from_response(get_resp);
     let mut expected = Source::new(None, Some(key.clone()));
     expected.buffer = actual.buffer.clone();
