@@ -78,7 +78,7 @@ impl Tinify {
   /// ```
   pub fn get_client(&self) -> Result<Client, TinifyException> {
     if self.key.is_empty() {
-      return Err(TinifyException::KeyException);
+      return Err(TinifyException::NoKeyProvided);
     }
     let client = Client::new(self.key.to_string());
   

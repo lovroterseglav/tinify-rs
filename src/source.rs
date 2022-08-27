@@ -72,7 +72,7 @@ impl Source {
     url: &str,
     buffer: Option<&[u8]>,
     resize_data: Option<ResizeData>,
-  ) -> Result<TinifyResponse, TinifyError> {
+  ) -> Result<TinifyResponse, TinifyException> {
     let parse = format!("{}{}", API_ENDPOINT, url);
     let reqwest_client = BlockingClient::new();
     let timeout = Duration::from_secs(240);
@@ -108,35 +108,34 @@ impl Source {
     };
     if let Err(error) = resp.as_ref() {
       if error.is_connect() {
-        eprintln!("Error processing the request.");
-        process::exit(1);
+        return Err(TinifyException::ConnectionException)
       }
     }
     let request_status = resp.as_ref().unwrap().status();
 
     match request_status {
+      StatusCode::OK => {
+        Ok(resp.unwrap())
+      }
+      StatusCode::CREATED => {
+        Ok(resp.unwrap())
+      }
+
       StatusCode::UNAUTHORIZED => {
-        error::exit_error(
-          TinifyException::AccountException, 
-          &request_status
-        );
+        Err(TinifyException::KeyException)
       },
       StatusCode::UNSUPPORTED_MEDIA_TYPE => {
-        error::exit_error(
-          TinifyException::ClientException, 
-          &request_status
-        );
+        Err(TinifyException::ClientException)
       },
       StatusCode::SERVICE_UNAVAILABLE => {
-        error::exit_error(
-          TinifyException::ServerException, 
-          &request_status
-        );
+        Err(TinifyException::ServerException)
       },
-      _  => {},
-    };
-    
-    resp
+
+      _ => {
+        Err(TinifyException::UnknownException(request_status))
+      },
+    }
+
   }
 
   pub fn from_file(
@@ -152,28 +151,28 @@ impl Source {
     let mut buffer: Vec<u8> = Vec::with_capacity(reader.capacity());
     reader.read_to_end(&mut buffer).unwrap();
     
-    Ok(self.from_buffer(&buffer))
+    Ok(self.from_buffer(&buffer)?)
   }
 
-  pub fn from_buffer(self, buffer: &[u8]) -> Self {
+  pub fn from_buffer(self, buffer: &[u8]) -> Result<Self, TinifyException> {
     let resp = self
-      .request(Method::Post, "/shrink", Some(buffer), None);
+      .request(Method::Post, "/shrink", Some(buffer), None)?;
 
-    self.get_source_from_response(resp.unwrap())
+    Ok(self.get_source_from_response(resp)?)
   }
 
   pub fn from_url(
     self,
     url: &str,
   ) -> Result<Self, TinifyException> {
-    let get_resp =
-      self.request(Method::Get, url, None, None);
-    let bytes =
-      get_resp.unwrap().bytes().unwrap().to_vec();
+    let bytes = self
+        .request(Method::Get, url, None, None)?
+        .bytes().unwrap()
+        .to_vec();
     let post_resp = self
-      .request(Method::Post, "/shrink", Some(&bytes), None);
+      .request(Method::Post, "/shrink", Some(&bytes), None)?;
 
-    Ok(self.get_source_from_response(post_resp.unwrap()))
+    Ok(self.get_source_from_response(post_resp)?)
   }
 
   pub fn resize(
@@ -191,9 +190,9 @@ impl Source {
     };
     let resize = ResizeData::new(method,width, height);
     let resize_resp = self
-      .request(Method::Resize, path, None, Some(resize));
+      .request(Method::Resize, path, None, Some(resize))?;
 
-    Ok(self.resize_image_to_buffer(resize_resp.unwrap()))
+    Ok(self.resize_image_to_buffer(resize_resp))
   }
 
   fn resize_image_to_buffer(
@@ -209,7 +208,7 @@ impl Source {
   pub fn get_source_from_response(
     mut self,
     response: TinifyResponse,
-  ) -> Self {
+  ) -> Result<Self, TinifyException> {
     let optimized_location = response
       .headers()
       .get("location")
@@ -221,13 +220,14 @@ impl Source {
         str::from_utf8(optimized_location.as_bytes()).unwrap();
       url.push_str(slice);
     }
-    let bytes = self.request(Method::Get, &url, None, None);
-    let compressed =
-      bytes.unwrap().bytes().unwrap().to_vec();
+    let compressed = self
+        .request(Method::Get, &url, None, None)?
+        .bytes().unwrap()
+        .to_vec();
     self.buffer = Some(compressed);
     self.url = Some(url);
 
-    self
+    Ok(self)
   }
 
   pub fn to_file(&self, path: &str) -> io::Result<()> {

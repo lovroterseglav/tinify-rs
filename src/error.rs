@@ -4,17 +4,19 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum TinifyException {
-  KeyException,
+  NoKeyProvided,
   NoFileOrDirectory,
-  AccountException,
+  KeyException,
   ClientException,
   ServerException,
+  ConnectionException,
+  UnknownException(StatusCode),
 }
 
 impl fmt::Display for TinifyException {
   fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      TinifyException::KeyException => {
+      TinifyException::NoKeyProvided => {
         write!(
           fmt,
           "Provide an API key with set_key(key) method",
@@ -26,7 +28,7 @@ impl fmt::Display for TinifyException {
           "No such file or directory.",
         )
       },
-      TinifyException::AccountException => {
+      TinifyException::KeyException => {
         write!(
           fmt,
           "There was a problem with your API key or with your API account.",
@@ -42,6 +44,19 @@ impl fmt::Display for TinifyException {
         write!(
           fmt,
           "The request could not be completed because of a temporary problem with the Tinify API.",
+        )
+      }
+      TinifyException::ConnectionException => {
+        write!(
+          fmt,
+          "The request could not be sent because there was an issue connecting to the Tinify API.",
+        )
+      }
+      TinifyException::UnknownException(status) => {
+        write!(
+          fmt,
+          "The request could not be completed because of a unknown problem. HTTP status code: {}",
+          status
         )
       }
     }

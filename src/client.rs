@@ -39,11 +39,8 @@ impl Client {
     path: &str,
   ) -> Result<Source, TinifyException> {
     let path = Path::new(path);
-    let source = self
-      .get_source()
-      .from_file(path);
-  
-    source
+    self.get_source()
+      .from_file(path)
   }
   
   /// Choose a buffer to compress.
@@ -72,11 +69,9 @@ impl Client {
     &self,
     buffer: &[u8],
   ) -> Result<Source, TinifyException> {
-    let source = self
-      .get_source()
-      .from_buffer(buffer);
+   self.get_source()
+      .from_buffer(buffer)
   
-    Ok(source)
   }
   
   /// Choose an url file to compress.
@@ -102,10 +97,9 @@ impl Client {
     &self,
     url: &str,
   ) -> Result<Source, TinifyException> {
-    let source = Source::new(None, Some(self.key.clone()))
-      .from_url(url);
-  
-    source
+    Source::new(None, Some(self.key.clone()))
+      .from_url(url)
+
   }
 
   pub fn resize(
@@ -115,10 +109,9 @@ impl Client {
     height: u32,
     method: ResizeMethod
   ) -> Result<Source, TinifyException> {
-    let source = Source::new(None, Some(self.key.clone()))
-        .resize(path, width, height, method);
+    Source::new(None, Some(self.key.clone()))
+        .resize(path, width, height, method)
 
-    source
   }
 }
 
